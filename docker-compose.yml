@@ -1,0 +1,127 @@
+# Define todos os serviços (containers) que serão criados pelo Docker Compose.
+services:
+  # Serviço responsável por executar o Apache Spark e o Jupyter Lab.
+  spark:
+    # Imagem oficial que já possui Jupyter Notebook/Lab + PySpark instalados.
+    image: jupyter/pyspark-notebook:latest
+
+    # Nome fixo do container para facilitar sua identificação.
+    container_name: etl_spark
+
+    # Mapeia portas do computador para o container.
+    ports:
+      # Porta do Jupyter Lab.
+      # Acesso: http://localhost:8888
+      - "8888:8888"
+
+      # Porta da interface web do Spark.
+      # Só aparece quando existe algum processamento em execução.
+      # Acesso: http://localhost:4040
+      - "4040:4040"
+
+    # Compartilha pastas entre o computador e o container.
+    volumes:
+      # Compartilha a pasta notebooks.
+      # Tudo salvo no Jupyter ficará disponível no computador.
+      - ./notebooks:/home/jovyan/work/notebooks
+
+      # Compartilha a pasta onde ficarão os arquivos de ingestão.
+      - ./ingestion:/home/jovyan/work/ingestion
+
+      # Compartilha a pasta onde ficarão os datasets.
+      - ./data:/home/jovyan/work/data
+
+    # Define variáveis de ambiente utilizadas pela imagem.
+    environment:
+      # Faz o container abrir diretamente o JupyterLab.
+      - JUPYTER_ENABLE_LAB=yes
+
+      # Define um token fixo para acessar o Jupyter.
+      # Em ambiente de produção normalmente utiliza-se outro método de autenticação.
+      - JUPYTER_TOKEN=etl123
+
+    # Conecta este container à rede interna chamada etl_network.
+    networks:
+      - etl_network
+
+  # Serviço responsável pelo banco de dados PostgreSQL.
+  postgres:
+    # Imagem oficial do PostgreSQL versão 16.
+    image: postgres:16
+
+    # Nome fixo do container.
+    container_name: etl_postgres
+
+    # Reinicia automaticamente caso o container pare.
+    restart: always
+
+    # Variáveis usadas para criar o banco na primeira inicialização.
+    environment:
+      # Nome do usuário administrador.
+      POSTGRES_USER: etl_user
+
+      # Senha do usuário.
+      POSTGRES_PASSWORD: etl_pass
+
+      # Nome do banco de dados criado automaticamente.
+      POSTGRES_DB: etl_db
+
+    # Expõe a porta padrão do PostgreSQL.
+    ports:
+      # Permite conectar ao banco pelo computador usando localhost:5432.
+      - "5432:5432"
+
+    # Volume responsável por armazenar os dados do banco.
+    volumes:
+      # Faz com que os dados continuem existindo mesmo após remover o container.
+      - postgres_data:/var/lib/postgresql/data
+
+    # Conecta o PostgreSQL à rede interna.
+    networks:
+      - etl_network
+
+  # Serviço responsável pela interface gráfica de administração do PostgreSQL.
+  pgadmin:
+    # Imagem oficial do pgAdmin.
+    image: dpage/pgadmin4:latest
+
+    # Nome fixo do container.
+    container_name: etl_pgadmin
+
+    # Reinicia automaticamente caso o container seja interrompido.
+    restart: always
+
+    # Variáveis utilizadas para criar o usuário inicial do pgAdmin.
+    environment:
+      # E-mail utilizado para login.
+      PGADMIN_DEFAULT_EMAIL: admin@admin.com
+
+      # Senha utilizada para login.
+      PGADMIN_DEFAULT_PASSWORD: admin
+
+    # Mapeia a porta do pgAdmin.
+    ports:
+      # O pgAdmin ficará disponível em http://localhost:5050
+      - "5050:80"
+
+    # Garante que o PostgreSQL seja iniciado antes do pgAdmin.
+    depends_on:
+      - postgres
+
+    # Conecta o pgAdmin à mesma rede do PostgreSQL.
+    networks:
+      - etl_network
+
+# Define os volumes nomeados utilizados pelos containers.
+volumes:
+  # Volume persistente onde o PostgreSQL armazenará todos os dados.
+  postgres_data:
+
+# Define as redes utilizadas pelos containers.
+networks:
+  # Nome da rede compartilhada entre todos os serviços.
+  etl_network:
+    # Utiliza o driver bridge.
+    # Esse driver cria uma rede privada permitindo que os containers
+    # se comuniquem usando seus nomes (spark, postgres e pgadmin).
+    driver: bridge
